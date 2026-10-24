@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>הזמנה ליומן</title>
+<meta property="og:title" content="הזמנה ליומן">
+<meta property="og:description" content="לחצו כדי להוסיף את האירוע ליומן שלכם">
+<meta name="robots" content="noindex">
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #f5f5f7; color: #1c1c1e; padding: 24px 16px;
+    font: 17px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  }
+  .card { width: 100%; max-width: 380px; background: #fff; border-radius: 18px; padding: 28px 24px; }
+  .label { font-size: 13px; color: #8e8e93; margin: 0 0 6px; }
+  h1 { font-size: 24px; line-height: 1.25; margin: 0 0 14px; font-weight: 600; }
+  .when { margin: 0; color: #3a3a3c; }
+  .notes { margin: 14px 0 0; color: #636366; font-size: 15px; white-space: pre-wrap; }
+  .btn {
+    display: block; width: 100%; margin-top: 26px; padding: 15px; border: 0; border-radius: 12px;
+    background: #1c1c1e; color: #fff; font: inherit; font-weight: 600; text-align: center;
+    text-decoration: none; cursor: pointer;
+  }
+  .alt { display: block; margin-top: 14px; text-align: center; font-size: 14px; color: #8e8e93; }
+  .error { text-align: center; color: #8e8e93; }
+</style>
+</head>
+<body>
+<main class="card" id="card">
+  <p class="error">טוען…</p>
+</main>
+<script>
+(function () {
+  // The link carries the event as base64url JSON in ?e= :
+  // { t: title, n?: notes, s?: start (unix seconds), m?: minutes, d?: "YYYYMMDD" (all-day) }
+  var card = document.getElementById("card");
+  function fail() { card.innerHTML = '<p class="error">הקישור לא תקין.</p>'; }
+
+  var ev;
+  try {
+    var raw = new URLSearchParams(location.search).get("e");
+    var b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    var bytes = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+    ev = JSON.parse(new TextDecoder().decode(bytes));
+    if (!ev.t || !(ev.s || ev.d)) throw 0;
+  } catch (e) { return fail(); }
+
+  var allDay = !!ev.d;
+  var start, end;
+  if (allDay) {
+    start = new Date(+ev.d.slice(0, 4), +ev.d.slice(4, 6) - 1, +ev.d.slice(6, 8));
+    end = new Date(start); end.setDate(end.getDate() + 1);
+  } else {
+    start = new Date(ev.s * 1000);
+    end = new Date(start.getTime() + (ev.m || 60) * 60000);
+  }
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function utc(d) {
+    return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + "T" +
+           pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + pad(d.getUTCSeconds()) + "Z";
+  }
+  function day(d) { return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); }
+  function esc(s) { return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n"); }
+
+  // --- page ---
+  var fmt = allDay
+    ? { weekday: "long", day: "numeric", month: "long" }
+    : { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" };
+  var when = new Intl.DateTimeFormat("he-IL", fmt).format(start);
+  card.innerHTML =
+    '<p class="label">הוזמנת ל</p><h1></h1><p class="when"></p>' +
+    (ev.n ? '<p class="notes"></p>' : "") +
+    '<button class="btn" id="add">הוספה ליומן</button>' +
+    '<a class="alt" id="google" target="_blank" rel="noopener">או ב־Google Calendar</a>';
+  card.querySelector("h1").textContent = ev.t;
+  card.querySelector(".when").textContent = when;
+  if (ev.n) card.querySelector(".notes").textContent = ev.n;
+  document.title = ev.t;
+
+  // --- calendar file (Apple Calendar shows "Add to Calendar" for it) ---
+  var ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Mesimot//HE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
+    "BEGIN:VEVENT",
+    "UID:" + (ev.s || ev.d) + "-" + encodeURIComponent(ev.t).slice(0, 40) + "@mesimot",
+    "DTSTAMP:" + utc(new Date()),
+    allDay ? "DTSTART;VALUE=DATE:" + day(start) : "DTSTART:" + utc(start),
+    allDay ? "DTEND;VALUE=DATE:" + day(end) : "DTEND:" + utc(end),
+    "SUMMARY:" + esc(ev.t)
+  ];
+  if (ev.n) ics.push("DESCRIPTION:" + esc(ev.n));
+  ics.push("BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + esc(ev.t),
+           allDay ? "TRIGGER:PT9H" : "TRIGGER:-PT30M", "END:VALARM", "END:VEVENT", "END:VCALENDAR");
+  var icsURL = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics.join("\r\n"));
+
+  // --- Google Calendar ---
+  var g = new URL("https://calendar.google.com/calendar/render");
+  g.searchParams.set("action", "TEMPLATE");
+  g.searchParams.set("text", ev.t);
+  g.searchParams.set("dates", allDay ? day(start) + "/" + day(end) : utc(start) + "/" + utc(end));
+  if (ev.n) g.searchParams.set("details", ev.n);
+  document.getElementById("google").href = g.toString();
+
+  var apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+  document.getElementById("add").onclick = function () {
+    if (apple) location.href = icsURL; else window.open(g.toString(), "_blank");
+  };
+  // On iPhone go straight to the "Add to Calendar" screen; the button stays as a fallback.
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) setTimeout(function () { location.href = icsURL; }, 400);
+})();
+</script>
+</body>
+</html>
