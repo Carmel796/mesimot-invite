@@ -106,12 +106,28 @@
   if (ev.n) g.searchParams.set("details", ev.n);
   document.getElementById("google").href = g.toString();
 
-  var apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
-  document.getElementById("add").onclick = function () {
-    if (apple) location.href = icsURL; else window.open(g.toString(), "_blank");
-  };
-  // On iPhone go straight to the "Add to Calendar" screen; the button stays as a fallback.
-  if (/iPhone|iPad|iPod/.test(navigator.userAgent)) setTimeout(function () { location.href = icsURL; }, 400);
+  var ua = navigator.userAgent;
+  var apple = /iPhone|iPad|iPod|Macintosh/.test(ua);
+  var ios = /iPhone|iPad|iPod/.test(ua);
+  // Apps' own built-in browsers (WhatsApp, Instagram…) are bare web views without "Safari/" in the
+  // user agent, and they silently ignore calendar files. Hand the page over to real Safari there.
+  var inAppView = ios && !/Safari\//.test(ua);
+
+  function addToCalendar() {
+    if (inAppView) {
+      document.getElementById("hint").hidden = false;
+      location.href = "x-safari-" + location.href; // iOS 17+: opens this same page in Safari
+    } else if (apple) {
+      location.href = icsURL;
+    } else {
+      window.open(g.toString(), "_blank");
+    }
+  }
+  card.insertAdjacentHTML("beforeend",
+    '<p class="alt" id="hint" hidden>נפתח בספארי… אם לא קרה כלום, לחצו על ⋯ או על סמל השיתוף ובחרו ״פתיחה בספארי״.</p>');
+  document.getElementById("add").onclick = addToCalendar;
+  // On iPhone go straight to the "Add to Calendar" screen (or to Safari); the button stays as a fallback.
+  if (ios) setTimeout(addToCalendar, 400);
 })();
 </script>
 </body>
