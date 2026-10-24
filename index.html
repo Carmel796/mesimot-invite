@@ -27,6 +27,7 @@
   }
   .alt { display: block; margin-top: 14px; text-align: center; font-size: 14px; color: #8e8e93; }
   .error { text-align: center; color: #8e8e93; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -96,7 +97,8 @@
   if (ev.n) ics.push("DESCRIPTION:" + esc(ev.n));
   ics.push("BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + esc(ev.t),
            allDay ? "TRIGGER:PT9H" : "TRIGGER:-PT30M", "END:VALARM", "END:VEVENT", "END:VCALENDAR");
-  var icsURL = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics.join("\r\n"));
+  // A blob: URL, not data: — iOS 26 Safari silently ignores navigating to data: calendar files.
+  var icsURL = URL.createObjectURL(new Blob([ics.join("\r\n")], { type: "text/calendar" }));
 
   // --- Google Calendar ---
   var g = new URL("https://calendar.google.com/calendar/render");
